@@ -1,0 +1,67 @@
+#!/bin/bash
+
+set -e
+
+SANDBOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+    echo "Usage: $0 <workspace_path> [command]"
+    echo ""
+    echo "Arguments:"
+    echo "  workspace_path    Absolute or relative path to mount as workspace"
+    echo "  command          Optional command to run (default: interactive bash)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 /Users/thomas/projects"
+    echo "  $0 ./my-project"
+    echo "  $0 /path/to/files 'claude --help'"
+    echo "  $0 ~/Documents/code 'ls -la && bash'"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then
+    echo "Error: Workspace path is required"
+    usage
+fi
+
+WORKSPACE_PATH="$1"
+COMMAND="${2:-bash}"
+
+if [[ "$WORKSPACE_PATH" != /* ]]; then
+    WORKSPACE_PATH="$(cd "$WORKSPACE_PATH" 2>/dev/null && pwd || echo "$PWD/$WORKSPACE_PATH")"
+fi
+
+if [ ! -d "$WORKSPACE_PATH" ]; then
+    echo "Error: Directory '$WORKSPACE_PATH' does not exist"
+    exit 1
+fi
+
+if [ ! -r "$WORKSPACE_PATH" ]; then
+    echo "Error: Directory '$WORKSPACE_PATH' is not readable"
+    exit 1
+fi
+
+echo "Mounting workspace: $WORKSPACE_PATH"
+echo "Running command: $COMMAND"
+echo ""
+
+export WORKSPACE_PATH
+
+cd "$SANDBOX_DIR"
+
+echo "Using docker-compose from: $SANDBOX_DIR"
+ls -la
+
+if [ ! -f "docker-compose.yaml" ]; then
+    echo "Error: docker-compose.yml not found in $SANDBOX_DIR"
+    echo "Make sure the docker-compose.yml file is in the same directory as this script"
+    exit 1
+fi
+
+if ! docker images claude-sandbox_claude-sandbox --format "{{.Repository}}" | grep -q "claude-sandbox_claude-sandbox"; then
+    echo "Building container image..."
+    docker-compose build
+fi
+
+# Run with docker-compose
+docker-compose run claude-sandbox
