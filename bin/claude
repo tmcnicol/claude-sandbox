@@ -20,81 +20,80 @@ if [ $# -lt 1 ]; then
     usage
 fi
 
-if [ ! -f "docker-compose.yaml" ]; then
-    echo "Error: docker-compose.yml not found in $SANDBOX_DIR"
-    echo "Make sure the docker-compose.yml file is in the same directory as this script"
-    exit 1
-fi
-
 COMMAND="$1"
 if [[ "$COMMAND" == "help" ]]; then
     usage
 fi
 
-COMMAND="$1"
 if [[ "$COMMAND" == "stop" ]]; then
     echo "Stopping claude"
+    cd "$SANDBOX_DIR"
     docker-compose down
     exit 0
 fi
 
 if [[ "$COMMAND" == "shell" ]]; then
     echo "Accessing claude"
+    cd "$SANDBOX_DIR"
     docker exec -it claude-sandbox claude
     exit 0
 fi
 
 if [[ "$COMMAND" == "debug" ]]; then
+    cd "$SANDBOX_DIR"
     docker exec -it claude-sandbox /bin/bash
     exit 0
 fi
 
-if [[ "$COMMAND" != "start" ]]; then
-    echo "Unknown command: $COMMAND"
+if [[ "$COMMAND" == "start" ]]; then
+    if [ $# -lt 2 ]; then
+        echo "Error: A path is required to start claude"
+        usage
+    fi
+
+    WORKSPACE_PATH="$2"
+    if [[ "$WORKSPACE_PATH" != /* ]]; then
+        WORKSPACE_PATH="$(cd "$WORKSPACE_PATH" 2>/dev/null && pwd || echo "$PWD/$WORKSPACE_PATH")"
+    fi
+
+    if [ ! -d "$WORKSPACE_PATH" ]; then
+        echo "Error: Directory '$WORKSPACE_PATH' does not exist"
+        exit 1
+    fi
+
+    if [ ! -r "$WORKSPACE_PATH" ]; then
+        echo "Error: Directory '$WORKSPACE_PATH' is not readable"
+        exit 1
+    fi
+
+    export WORKSPACE_PATH
+    cd "$SANDBOX_DIR"
+
+    if [ ! -f "docker-compose.yaml" ]; then
+        echo "Error: docker-compose.yml not found in $SANDBOX_DIR"
+        echo "Make sure the docker-compose.yml file is in the same directory as this script"
+        exit 1
+    fi
+
+    if docker compose ps --services --filter "status=running" | grep -q "claude-sandbox"; then
+        CURRENT_MOUNT="$(docker inspect claude-sandbox --format='{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')"
+        echo "Claude container is running at: ${CURRENT_MOUNT}"
+        echo "Use 'claude stop'"
+        exit 1
+    fi
+
+    echo "Mounting workspace: $WORKSPACE_PATH"
+    echo ""
+    if ! docker images claude-sandbox_claude-sandbox --format "{{.Repository}}" | grep -q "claude-sandbox_claude-sandbox"; then
+        echo "Building container image..."
+        docker-compose build
+    fi
+
+    # Run with docker-compose
+    docker-compose up -d --remove-orphans claude-sandbox
+
     exit 0
 fi
 
-if [ $# -lt 2 ]; then
-    echo "Error: A path is required to run claude"
-    usage
-fi
-
-WORKSPACE_PATH="$2"
-if [[ "$WORKSPACE_PATH" != /* ]]; then
-    WORKSPACE_PATH="$(cd "$WORKSPACE_PATH" 2>/dev/null && pwd || echo "$PWD/$WORKSPACE_PATH")"
-fi
-
-if [ ! -d "$WORKSPACE_PATH" ]; then
-    echo "Error: Directory '$WORKSPACE_PATH' does not exist"
-    exit 1
-fi
-
-if [ ! -r "$WORKSPACE_PATH" ]; then
-    echo "Error: Directory '$WORKSPACE_PATH' is not readable"
-    exit 1
-fi
-
-export WORKSPACE_PATH
-
-if docker compose ps --services --filter "status=running" | grep -q "claude-sandbox"; then
-    echo "Claude container is running at: ${WORKSPACE_PATH}"
-    echo "Use claude stop, to start it again"
-    exit 1
-fi
-
-echo "Mounting workspace: $WORKSPACE_PATH"
-echo ""
-
-cd "$SANDBOX_DIR"
-
-echo "Using docker-compose from: $SANDBOX_DIR"
-ls -la
-
-
-if ! docker images claude-sandbox_claude-sandbox --format "{{.Repository}}" | grep -q "claude-sandbox_claude-sandbox"; then
-    echo "Building container image..."
-    docker-compose build
-fi
-
-# Run with docker-compose
-docker-compose up -d --remove-orphans claude-sandbox
+echo "Unknown command"
+usage
