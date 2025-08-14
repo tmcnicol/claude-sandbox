@@ -2,7 +2,10 @@ services:
   claude-sandbox:
     build: .
     container_name: claude-sandbox
+    restart: unless-stopped
     volumes:
+      - ${HOME}/.claude.json:/home/appuser/.claude.json
+      - ${HOME}/.claude:/home/appuser/.claude
       - ${WORKSPACE_PATH}:/workspace:rw
     stdin_open: true
     tty: true

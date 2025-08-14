@@ -28,5 +28,3 @@ ENV PATH="/home/appuser/node_modules/bin:$PATH"
 RUN npm install -g @anthropic-ai/claude-code
 
 WORKDIR /workspace
-
-CMD ["claude"]

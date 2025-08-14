@@ -5,28 +5,61 @@ set -e
 SANDBOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    echo "Usage: $0 <workspace_path> [command]"
+    echo "Usage: $0 <start | stop | shell | debug> [workspace_path]"
     echo ""
-    echo "Arguments:"
-    echo "  workspace_path    Absolute or relative path to mount as workspace"
-    echo "  command          Optional command to run (default: interactive bash)"
-    echo ""
-    echo "Examples:"
-    echo "  $0 /Users/thomas/projects"
-    echo "  $0 ./my-project"
-    echo "  $0 /path/to/files 'claude --help'"
-    echo "  $0 ~/Documents/code 'ls -la && bash'"
+    echo "start - starts the container running claude"
+    echo "  Arguments: workspace_path    Absolute or relative path to mount as workspace"
+    echo "stop  - stops the container running claude"
+    echo "shell - access the container running claude"
+    echo "debug - access the container shell for debugging"
     exit 1
 }
 
 if [ $# -lt 1 ]; then
-    echo "Error: Workspace path is required"
+    echo "Error: Command is required"
     usage
 fi
 
-WORKSPACE_PATH="$1"
-COMMAND="${2:-bash}"
+if [ ! -f "docker-compose.yaml" ]; then
+    echo "Error: docker-compose.yml not found in $SANDBOX_DIR"
+    echo "Make sure the docker-compose.yml file is in the same directory as this script"
+    exit 1
+fi
 
+COMMAND="$1"
+if [[ "$COMMAND" == "help" ]]; then
+    usage
+fi
+
+COMMAND="$1"
+if [[ "$COMMAND" == "stop" ]]; then
+    echo "Stopping claude"
+    docker-compose down
+    exit 0
+fi
+
+if [[ "$COMMAND" == "shell" ]]; then
+    echo "Accessing claude"
+    docker exec -it claude-sandbox claude
+    exit 0
+fi
+
+if [[ "$COMMAND" == "debug" ]]; then
+    docker exec -it claude-sandbox /bin/bash
+    exit 0
+fi
+
+if [[ "$COMMAND" != "start" ]]; then
+    echo "Unknown command: $COMMAND"
+    exit 0
+fi
+
+if [ $# -lt 2 ]; then
+    echo "Error: A path is required to run claude"
+    usage
+fi
+
+WORKSPACE_PATH="$2"
 if [[ "$WORKSPACE_PATH" != /* ]]; then
     WORKSPACE_PATH="$(cd "$WORKSPACE_PATH" 2>/dev/null && pwd || echo "$PWD/$WORKSPACE_PATH")"
 fi
@@ -41,22 +74,22 @@ if [ ! -r "$WORKSPACE_PATH" ]; then
     exit 1
 fi
 
-echo "Mounting workspace: $WORKSPACE_PATH"
-echo "Running command: $COMMAND"
-echo ""
-
 export WORKSPACE_PATH
+
+if docker compose ps --services --filter "status=running" | grep -q "claude-sandbox"; then
+    echo "Claude container is running at: ${WORKSPACE_PATH}"
+    echo "Use claude stop, to start it again"
+    exit 1
+fi
+
+echo "Mounting workspace: $WORKSPACE_PATH"
+echo ""
 
 cd "$SANDBOX_DIR"
 
 echo "Using docker-compose from: $SANDBOX_DIR"
 ls -la
 
-if [ ! -f "docker-compose.yaml" ]; then
-    echo "Error: docker-compose.yml not found in $SANDBOX_DIR"
-    echo "Make sure the docker-compose.yml file is in the same directory as this script"
-    exit 1
-fi
 
 if ! docker images claude-sandbox_claude-sandbox --format "{{.Repository}}" | grep -q "claude-sandbox_claude-sandbox"; then
     echo "Building container image..."
@@ -64,4 +97,4 @@ if ! docker images claude-sandbox_claude-sandbox --format "{{.Repository}}" | gr
 fi
 
 # Run with docker-compose
-docker-compose run claude-sandbox
+docker-compose up -d --remove-orphans claude-sandbox
