@@ -4,9 +4,9 @@ services:
     container_name: claude-sandbox
     restart: unless-stopped
     volumes:
+      - ${WORKSPACE_PATH:-/dev/null}:/workspace:rw
       - ${HOME}/.claude.json:/home/appuser/.claude.json
       - ${HOME}/.claude:/home/appuser/.claude
-      - ${WORKSPACE_PATH}:/workspace:rw
     stdin_open: true
     tty: true
     working_dir: /workspace

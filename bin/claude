@@ -3,6 +3,13 @@
 set -e
 
 SANDBOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_CONFIG="${SANDBOX_DIR}/docker-compose.yaml"
+
+if [ ! -f "${COMPOSE_CONFIG}" ]; then
+    echo "Error: docker-compose.yml not found in $SANDBOX_DIR"
+    echo "Make sure the docker-compose.yml file is in the same directory as this script"
+    exit 1
+fi
 
 usage() {
     echo "Usage: $0 <start | stop | shell | debug> [workspace_path]"
@@ -20,6 +27,8 @@ if [ $# -lt 1 ]; then
     usage
 fi
 
+export WORKSPACE_PATH
+
 COMMAND="$1"
 if [[ "$COMMAND" == "help" ]]; then
     usage
@@ -28,20 +37,25 @@ fi
 if [[ "$COMMAND" == "stop" ]]; then
     echo "Stopping claude"
     cd "$SANDBOX_DIR"
-    docker-compose down
+    docker-compose -f "$SANDBOX_DIR/docker-compose.yaml" down
     exit 0
 fi
 
 if [[ "$COMMAND" == "shell" ]]; then
     echo "Accessing claude"
-    cd "$SANDBOX_DIR"
     docker exec -it claude-sandbox claude
     exit 0
 fi
 
 if [[ "$COMMAND" == "debug" ]]; then
-    cd "$SANDBOX_DIR"
     docker exec -it claude-sandbox /bin/bash
+    exit 0
+fi
+
+if [[ "$COMMAND" == "status" ]]; then
+    echo "status:"
+    docker inspect claude-sandbox --format='{{range .Mounts}}{{if eq .Destination "/workspace"}}    mount: {{.Source}}{{end}}{{end}}'
+    docker inspect claude-sandbox --format='    status: {{.State.Status}}'
     exit 0
 fi
 
@@ -69,13 +83,8 @@ if [[ "$COMMAND" == "start" ]]; then
     export WORKSPACE_PATH
     cd "$SANDBOX_DIR"
 
-    if [ ! -f "docker-compose.yaml" ]; then
-        echo "Error: docker-compose.yml not found in $SANDBOX_DIR"
-        echo "Make sure the docker-compose.yml file is in the same directory as this script"
-        exit 1
-    fi
 
-    if docker compose ps --services --filter "status=running" | grep -q "claude-sandbox"; then
+    if docker compose -f "${COMPOSE_CONFIG}" ps --services --filter "status=running" | grep -q "claude-sandbox"; then
         CURRENT_MOUNT="$(docker inspect claude-sandbox --format='{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')"
         echo "Claude container is running at: ${CURRENT_MOUNT}"
         echo "Use 'claude stop'"
@@ -86,11 +95,11 @@ if [[ "$COMMAND" == "start" ]]; then
     echo ""
     if ! docker images claude-sandbox_claude-sandbox --format "{{.Repository}}" | grep -q "claude-sandbox_claude-sandbox"; then
         echo "Building container image..."
-        docker-compose build
+        docker-compose -f "${COMPOSE_CONFIG}" build
     fi
 
-    # Run with docker-compose
-    docker-compose up -d --remove-orphans claude-sandbox
+    echo "Starting"
+    docker-compose -f "${COMPOSE_CONFIG}" up -d --remove-orphans claude-sandbox
 
     exit 0
 fi
